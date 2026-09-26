@@ -7,7 +7,7 @@ from google import genai
 # KONFIGURASI HALAMAN STREAMLIT
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="AI PPTX Generator (Full Gemini Multimodal)",
+    page_title="AI PPTX Generator (Full Gemini Engine)",
     page_icon="📊",
     layout="wide"
 )
@@ -53,7 +53,7 @@ uploaded_template = st.file_uploader("Upload Template Contoh / Referensi Visual 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# PROSES GENERATE VIA GEMINI MULTIMODAL
+# PROSES GENERATE VIA GEMINI MULTIMODAL (WITH AUTOMATIC FALLBACK)
 # -----------------------------------------------------------------------------
 if st.button("🚀 Proses Semua di Gemini AI & Generate PPTX"):
     if not (f_eb or f_jaskug or f_ritel):
@@ -72,11 +72,10 @@ if st.button("🚀 Proses Semua di Gemini AI & Generate PPTX"):
 
                 # 1. Upload File ke Gemini API (File API)
                 uploaded_files_gemini = []
-                
                 all_inputs = [f_eb, p_eb, f_jaskug, p_jaskug, f_ritel, p_ritel, uploaded_template]
+                
                 for file_item in all_inputs:
                     if file_item is not None:
-                        # Simpan sementara untuk di-upload ke Gemini
                         ext = os.path.splitext(file_item.name)[1]
                         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
                             tmp.write(file_item.getbuffer())
@@ -97,43 +96,4 @@ Tugas Anda:
 1. Pelajari data keuangan dari berkas yang diunggah.
 2. Analisis gaya desain, warna, dan tata letak dari berkas template referensi yang diunggah.
 3. Hasilkan KODE PYTHON LENGKAP menggunakan library `python-pptx` yang membuat file presentasi bernama `output_presentation.pptx`.
-4. Berikan HANYA kode Python di dalam pembungkus ```python ... ``` tanpa penjelasan teks lainnya.
-Kode harus mendefinisikan pembuatan slide 16:9, menyusun shape, warna, dan text frame yang persis mencerminkan analisis data dan desain dari berkas yang diunggah.
-"""
-
-                contents = uploaded_files_gemini + [prompt_instructions]
-
-                # 3. Panggil Model Gemini Flash
-                response = client.models.generate_content(
-                    model='gemini-3.5-flash',
-                    contents=contents
-                )
-
-                generated_code = response.text
-
-                # Bersihkan format markdown dari respon kode
-                if "```python" in generated_code:
-                    generated_code = generated_code.split("```python")[1].split("```")[0]
-                elif "```" in generated_code:
-                    generated_code = generated_code.split("```")[1].split("```")[0]
-
-                # 4. Eksekusi Kode Generator yang Dibuat Oleh Gemini
-                exec_scope = {}
-                exec(generated_code, exec_scope)
-
-                # 5. Unduh File Hasil Olahan Gemini
-                output_filename = "output_presentation.pptx"
-                if os.path.exists(output_filename):
-                    st.success("✨ Gemini AI berhasil menganalisis seluruh data & template serta mengeksekusi pembuatan PPTX!")
-                    with open(output_filename, "rb") as f:
-                        st.download_button(
-                            label="📥 Download File PPTX Olahan Gemini AI",
-                            data=f,
-                            file_name="Hasil_Presentasi_Gemini_AI.pptx",
-                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                        )
-                else:
-                    st.error("Gagal menemukan file presentasi hasil eksekusi kode Gemini.")
-
-            except Exception as e:
-                st.error(f"Terjadi kesalahan saat memproses di Gemini AI: {e}")
+4. Berikan HANYA kode Python di dalam pembungkus ```python ...
