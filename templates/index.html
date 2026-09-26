@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI PPTX Generator Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="max-w-3xl mx-auto mt-12 p-8 bg-white rounded-2xl shadow-xl">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2">AI PPTX Generator</h1>
+        <p class="text-sm text-gray-500 mb-6">Upload data pendukung dan masukkan prompt untuk menghasilkan file presentasi secara otomatis.</p>
+
+        <!-- Form Mengarah ke Backend /generate -->
+        <form action="/generate" method="POST" enctype="multipart/form-data" class="space-y-6">
+            
+            <!-- Bagian Upload Data (Simulasi Hak Akses SPV/Admin) -->
+            <div class="p-4 bg-gray-50 border border-dashed border-gray-300 rounded-xl space-y-4">
+                <h3 class="font-semibold text-gray-700 text-sm">Upload Berkas Pendukung (SPV / Admin)</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1 font-medium">Data (Excel/CSV)</label>
+                        <input type="file" name="dataFile" class="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1 font-medium">Dokumen PDF</label>
+                        <input type="file" name="pdfFile" accept=".pdf" class="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1 font-medium">Foto Pendukung</label>
+                        <input type="file" name="photoFile" accept="image/*" class="w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bagian Prompt (Simulasi Hak Akses EM/Admin) -->
+            <div>
+                <label class="block font-semibold text-gray-700 text-sm mb-2">Prompt / Instruksi AI (EM / Admin)</label>
+                <textarea name="prompt" rows="4" required class="w-full p-3 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Contoh: Buat ringkasan strategi pemasaran produk baru dalam 3 slide presentasi yang profesional..."></textarea>
+            </div>
+
+            <!-- Tombol Submit / Generate -->
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-md text-sm">
+                Generate & Download PPTX Otomatis
+            </button>
+        </form>
+    </div>
+
+</body>
+</html>
