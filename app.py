@@ -153,7 +153,7 @@ POIN_UTAMA:
 """
 
                 response = client.models.generate_content(
-                    model='gemini-3.5-flash',
+                    model='gemini-3.5-flash-lite',
                     contents=system_instruction
                 )
                 ai_output = response.text
