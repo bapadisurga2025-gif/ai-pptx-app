@@ -1,174 +1,279 @@
 import streamlit as st
+import os
+import tempfile
+import pandas as pd
+import pypdf
 from google import genai
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-import os
-import pypdf
-import pandas as pd
+from pptx.enum.text import PP_ALIGN
 
-# Konfigurasi halaman
-st.set_page_config(page_title="AI PPTX Executive Generator", layout="centered")
+# -----------------------------------------------------------------------------
+# KONFIGURASI HALAMAN STREAMLIT
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="AI PPTX Executive Generator",
+    page_icon="📊",
+    layout="wide"
+)
 
-st.title("AI PPTX Generator - Executive Dashboard Style")
-st.write("Sistem otomatis pengolahan data EB, Jaskug, dan Ritel menjadi presentasi profesional.")
+# Custom Styling
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    .stButton>button {
+        width: 100%;
+        background-color: #1f1f1f;
+        color: white;
+        border-radius: 6px;
+        font-weight: bold;
+        padding: 0.6rem;
+    }
+    .stButton>button:hover {
+        background-color: #333333;
+        color: white;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# Buat folder penyimpanan permanen jika belum ada
-UPLOAD_DIR = "uploaded_data"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+st.title("📊 AI PPTX Generator - Executive Style")
+st.write("Sistem otomatis pengolahan data menjadi presentasi PowerPoint profesional yang menyesuaikan instruksi prompt dan acuan desain.")
 
-def save_uploaded_file(uploaded_file, prefix):
-    if uploaded_file is not None:
-        file_path = os.path.join(UPLOAD_DIR, f"{prefix}_{uploaded_file.name}")
-        with open(file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        return file_path
-    return None
-
-def read_saved_file(file_path):
-    if not file_path or not os.path.exists(file_path):
+# -----------------------------------------------------------------------------
+# FUNGSI PEMBACAAN FILE DATASOURCE
+# -----------------------------------------------------------------------------
+def extract_text_from_file(file_obj):
+    if file_obj is None:
         return ""
     content = ""
     try:
-        ext = file_path.split('.')[-1].lower()
+        ext = file_obj.name.split('.')[-1].lower()
         if ext == 'pdf':
-            reader = pypdf.PdfReader(file_path)
+            reader = pypdf.PdfReader(file_obj)
             for page in reader.pages:
                 text = page.extract_text()
                 if text:
                     content += text + "\n"
         elif ext in ['xlsx', 'xls']:
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(file_obj)
             content = df.to_string()
         elif ext == 'csv':
-            df = pd.read_csv(file_path)
+            df = pd.read_csv(file_obj)
             content = df.to_string()
     except Exception as e:
-        content = f"[Gagal membaca {file_path}: {e}]"
+        content = f"[Gagal membaca file {file_obj.name}: {e}]"
     return content
 
-# Session state initialization
-if "prompt" not in st.session_state:
-    st.session_state.prompt = ""
-if "output_path" not in st.session_state:
-    st.session_state.output_path = None
+# -----------------------------------------------------------------------------
+# SIDEBAR: UPLOAD DATA & TEMPLATE
+# -----------------------------------------------------------------------------
+with st.sidebar:
+    st.header("⚙️ Sumber Data & Template")
+    
+    uploaded_template = st.file_uploader(
+        "Upload Template PowerPoint (.pptx)", 
+        type=["pptx"],
+        help="Template ini akan diacu sebagai contoh gaya visual dan tata letak.",
+        key="template_file"
+    )
+    
+    st.divider()
+    st.subheader("📁 Data Sumber Kinerja")
+    f_eb = st.file_uploader("Data EB (.csv, .xlsx, .pdf)", type=["csv", "xlsx", "pdf"], key="eb_f")
+    f_jaskug = st.file_uploader("Data Jaskug (.csv, .xlsx, .pdf)", type=["csv", "xlsx", "pdf"], key="jaskug_f")
+    f_ritel = st.file_uploader("Data Ritel (.csv, .xlsx, .pdf)", type=["csv", "xlsx", "pdf"], key="ritel_f")
+    
+    st.divider()
+    st.info("💡 **Tips:** Gemini akan menganalisis data sumber dan menyusun isi slide sesuai prompt yang Anda masukkan.")
 
-prompt = st.text_area("Prompt / Instruksi Khusus EM", value=st.session_state.prompt, key="prompt_input")
-st.session_state.prompt = prompt
+# -----------------------------------------------------------------------------
+# INPUT PROMPT / INSTRUKSI EKSEKUTIF
+# -----------------------------------------------------------------------------
+st.subheader("📝 Prompt / Instruksi Khusus Eksekutif")
+prompt_text = st.text_area(
+    "Masukkan instruksi penyusunan presentasi:",
+    value="Buat laporan eksekutif performa kinerja keuangan berdasarkan data yang diunggah, lengkap dengan ringkasan pencapaian utama, segmen top growth, area underperform/kritis, serta rencana aksi pemulihan strategis.",
+    height=120,
+    key="prompt_input"
+)
 
-st.markdown("---")
-st.subheader("📁 Upload Data & Foto Pendukung (Admin / SPV)")
-
-# Kolom Upload Sesuai Kanal
-col1, col2 = st.columns(2)
-with col1:
-    f_eb = st.file_uploader("Upload File EB", type=["csv", "xlsx", "pdf"], key="eb_f")
-    if f_eb: st.session_state.path_eb = save_uploaded_file(f_eb, "eb")
-with col2:
-    p_eb = st.file_uploader("Upload Foto EB", type=["png", "jpg", "jpeg"], key="eb_p")
-    if p_eb: st.session_state.photo_eb = save_uploaded_file(p_eb, "photo_eb")
-
-col3, col4 = st.columns(2)
-with col3:
-    f_jaskug = st.file_uploader("Upload File Jaskug", type=["csv", "xlsx", "pdf"], key="jaskug_f")
-    if f_jaskug: st.session_state.path_jaskug = save_uploaded_file(f_jaskug, "jaskug")
-with col4:
-    p_jaskug = st.file_uploader("Upload Foto Jaskug", type=["png", "jpg", "jpeg"], key="jaskug_p")
-    if p_jaskug: st.session_state.photo_jaskug = save_uploaded_file(p_jaskug, "photo_jaskug")
-
-col5, col6 = st.columns(2)
-with col5:
-    f_ritel = st.file_uploader("Upload File Ritel", type=["csv", "xlsx", "pdf"], key="ritel_f")
-    if f_ritel: st.session_state.path_ritel = save_uploaded_file(f_ritel, "ritel")
-with col6:
-    p_ritel = st.file_uploader("Upload Foto Ritel", type=["png", "jpg", "jpeg"], key="ritel_p")
-    if p_ritel: st.session_state.photo_ritel = save_uploaded_file(p_ritel, "photo_ritel")
-
-st.markdown("---")
-uploaded_template = st.file_uploader("Upload Template PowerPoint (.pptx)", type=["pptx"], key="template_file")
-if uploaded_template:
-    st.session_state.path_template = save_uploaded_file(uploaded_template, "template")
-
-st.markdown("---")
-if st.button("Generate Executive PPTX"):
-    if not prompt:
-        st.warning("Mohon masukkan instruksi terlebih dahulu!")
+# -----------------------------------------------------------------------------
+# PROSES GENERATE PRESENTASI
+# -----------------------------------------------------------------------------
+if st.button("🚀 Generate Executive Presentation (.pptx)"):
+    if not (f_eb or f_jaskug or f_ritel):
+        st.warning("⚠️ Mohon unggah setidaknya satu file data sumber (EB, Jaskug, atau Ritel) terlebih dahulu!")
+    elif not prompt_text.strip():
+        st.warning("⚠️ Mohon masukkan instruksi prompt terlebih dahulu!")
     else:
-        with st.spinner("Menyusun format presentasi eksekutif dengan Gemini AI..."):
+        with st.spinner("🤖 Memproses data dan merakit slide presentasi PowerPoint dengan Gemini AI..."):
             try:
-                data_eb = read_saved_file(st.session_state.get("path_eb"))
-                data_jaskug = read_saved_file(st.session_state.get("path_jaskug"))
-                data_ritel = read_saved_file(st.session_state.get("path_ritel"))
+                # 1. Ekstraksi teks dari file data
+                data_eb_text = extract_text_from_file(f_eb)
+                data_jaskug_text = extract_text_from_file(f_jaskug)
+                data_ritel_text = extract_text_from_file(f_ritel)
 
                 combined_data = f"""
-                DATA EB: {data_eb[:1500]}
-                DATA JASKUG: {data_jaskug[:1500]}
-                DATA RITEL: {data_ritel[:1500]}
+                DATA EB:
+                {data_eb_text[:3000]}
+
+                DATA JASKUG:
+                {data_jaskug_text[:3000]}
+
+                DATA RITEL:
+                {data_ritel_text[:3000]}
                 """
 
-                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+                # 2. Pemanggilan Gemini API via SDK google-genai
+                api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+                if not api_key:
+                    st.error("🔑 GEMINI_API_KEY tidak ditemukan pada st.secrets atau environment variables.")
+                    st.stop()
+
+                client = genai.Client(api_key=api_key)
+                
+                system_instruction = f"""Anda adalah tenaga ahli pembuat dashboard dan presentasi eksekutif korporat.
+Berdasarkan instruksi berikut: '{prompt_text}' dan gabungan data di bawah ini:
+{combined_data}
+
+Buatkan materi presentasi terstruktur yang bersih tanpa simbol markdown liar (** atau * berlebih). 
+Pecah menjadi beberapa slide (minimal 4 slide: Cover/Title, Summary, Detail Performance, Action Plan) dengan format terstruktur persis berikut untuk setiap slide:
+
+---SLIDE---
+JUDUL: [Judul Slide Utama]
+SUBJUDUL: [Subjudul/Kategori Slide]
+POIN_UTAMA:
+1. [Poin penjelas pertama]
+2. [Poin penjelas kedua]
+3. [Poin penjelas ketiga]
+4. [Poin penjelas keempat]
+"""
+
                 response = client.models.generate_content(
-                    model='gemini-3.5-flash',
-                    contents=f"""Anda adalah tenaga ahli pembuat dashboard eksekutif korporat. Berdasarkan instruksi '{prompt}' dan data berikut:
-                    {combined_data}
-                    
-                    Buatkan materi presentasi terstruktur yang bersih tanpa simbol markdown liar (** atau * berlebih). 
-                    Pecah menjadi beberapa slide dengan format persis berikut untuk setiap slide:
-                    ---SLIDE---
-                    KATEGORI: [Judul Panel Utama, misal: Kinerja KANAL EB / Rencana Aksi]
-                    METRIK: [Ringkasan Angka penting, misal: Realisasi: 731 Juta | Capaian: 83.7%]
-                    POIN_UTAMA:
-                    1. [Poin penjelas pertama yang rapi]
-                    2. [Poin penjelas kedua yang rapi]
-                    3. [Poin penjelas ketiga yang rapi]
-                    """
+                    model='gemini-2.5-flash',
+                    contents=system_instruction
                 )
                 ai_output = response.text
 
-                # Inisialisasi Presentation
-                if "path_template" in st.session_state and os.path.exists(st.session_state.path_template):
-                    prs = Presentation(st.session_state.path_template)
-                else:
-                    prs = Presentation()
+                # 3. Merakit File PowerPoint (.pptx)
+                prs = Presentation()
+                prs.slide_width = Inches(13.333)
+                prs.slide_height = Inches(7.5)
+                blank_layout = prs.slide_layouts[6]
 
-                slides_data = ai_output.split("---SLIDE---")
-                for s_data in slides_data:
-                    if "KATEGORI:" in s_data:
-                        try:
-                            lines = s_data.strip().split("\n")
-                            cat, met, points = "", "", []
-                            for line in lines:
-                                if "KATEGORI:" in line: cat = line.replace("KATEGORI:", "").strip()
-                                elif "METRIK:" in line: met = line.replace("METRIK:", "").strip()
-                                elif line.strip().startswith(("1.", "2.", "3.", "4.", "5.", "-")): points.append(line.strip())
+                slides_raw = ai_output.split("---SLIDE---")
+                slide_count = 0
 
-                            slide = prs.slides.add_slide(prs.slide_layouts[1])
-                            if slide.shapes.title:
-                                slide.shapes.title.text = cat
+                for s_data in slides_raw:
+                    if "JUDUL:" in s_data:
+                        lines = s_data.strip().split("\n")
+                        judul, subjudul, points = "", "", []
+                        
+                        for line in lines:
+                            if line.startswith("JUDUL:"):
+                                judul = line.replace("JUDUL:", "").strip()
+                            elif line.startswith("SUBJUDUL:"):
+                                subjudul = line.replace("SUBJUDUL:", "").strip()
+                            elif line.strip().startswith(("1.", "2.", "3.", "4.", "5.", "-")):
+                                points.append(line.strip())
+
+                        slide = prs.slides.add_slide(blank_layout)
+                        slide_count += 1
+
+                        # Desain Latar Belakang & Tata Letak
+                        if slide_count == 1:
+                            # Slide Cover
+                            bg = slide.shapes.add_shape(1, 0, 0, Inches(13.333), Inches(7.5))
+                            bg.fill.solid()
+                            bg.fill.fore_color.rgb = RGBColor(245, 245, 245)
+                            bg.line.color.rgb = RGBColor(245, 245, 245)
+
+                            box = slide.shapes.add_shape(1, Inches(1.0), Inches(1.0), Inches(2.2), Inches(1.8))
+                            box.fill.solid()
+                            box.fill.fore_color.rgb = RGBColor(20, 20, 20)
+                            box.line.color.rgb = RGBColor(20, 20, 20)
+
+                            tb = slide.shapes.add_textbox(Inches(1.5), Inches(3.2), Inches(10.0), Inches(3.0))
+                            tf = tb.text_frame
+                            tf.word_wrap = True
+
+                            p0 = tf.paragraphs[0]
+                            p0.text = subjudul.upper() if subjudul else "EXECUTIVE REPORT"
+                            p0.font.size = Pt(14)
+                            p0.font.bold = True
+                            p0.font.color.rgb = RGBColor(100, 100, 100)
+
+                            p1 = tf.add_paragraph()
+                            p1.text = judul if judul else "Laporan Performa Kinerja"
+                            p1.font.size = Pt(40)
+                            p1.font.bold = True
+                            p1.font.color.rgb = RGBColor(20, 20, 20)
+
+                            if points:
+                                p2 = tf.add_paragraph()
+                                p2.text = "\n".join(points)
+                                p2.font.size = Pt(16)
+                                p2.font.color.rgb = RGBColor(80, 80, 80)
+                        else:
+                            # Slide Konten
+                            tb_title = slide.shapes.add_textbox(Inches(1.0), Inches(0.8), Inches(11.333), Inches(1.0))
+                            tf_title = tb_title.text_frame
                             
-                            if slide.placeholders and len(slide.placeholders) > 1:
-                                formatted_text = f"RINGKASAN METRIK:\n{met}\n\nRINCIAN PROGRAM & KINERJA:\n" + "\n".join(points)
-                                slide.placeholders[1].text = formatted_text
-                        except:
-                            continue
+                            tp0 = tf_title.paragraphs[0]
+                            tp0.text = subjudul.upper() if subjudul else "PERFORMANCE ANALYSIS"
+                            tp0.font.size = Pt(14)
+                            tp0.font.bold = True
+                            tp0.font.color.rgb = RGBColor(100, 100, 100)
 
+                            tp1 = tf_title.add_paragraph()
+                            tp1.text = judul
+                            tp1.font.size = Pt(30)
+                            tp1.font.bold = True
+                            tp1.font.color.rgb = RGBColor(20, 20, 20)
+
+                            # Kartu Konten
+                            card = slide.shapes.add_shape(1, Inches(1.0), Inches(2.2), Inches(11.333), Inches(4.5))
+                            card.fill.solid()
+                            card.fill.fore_color.rgb = RGBColor(255, 255, 255)
+                            card.line.color.rgb = RGBColor(220, 220, 220)
+
+                            tf_card = card.text_frame
+                            tf_card.word_wrap = True
+                            
+                            p_head = tf_card.paragraphs[0]
+                            p_head.text = "Poin-Poin Utama Eksekutif:"
+                            p_head.font.bold = True
+                            p_head.font.size = Pt(18)
+                            p_head.font.color.rgb = RGBColor(20, 20, 20)
+
+                            p_body = tf_card.add_paragraph()
+                            p_body.text = "\n" + "\n\n".join(points)
+                            p_body.font.size = Pt(14)
+                            p_body.font.color.rgb = RGBColor(60, 60, 60)
+
+                # Fallback jika slide kosong
                 if len(prs.slides) == 0:
-                    slide = prs.slides.add_slide(prs.slide_layouts[0])
-                    slide.shapes.title.text = "Executive Summary"
-                    if slide.placeholders and len(slide.placeholders) > 1:
-                        slide.placeholders[1].text = ai_output[:1000]
+                    slide = prs.slides.add_slide(blank_layout)
+                    tb = slide.shapes.add_textbox(Inches(1.0), Inches(1.0), Inches(11.333), Inches(5.0))
+                    tb.text_frame.text = ai_output
 
-                st.session_state.output_path = "output_executive.pptx"
-                prs.save(st.session_state.output_path)
-                st.success("Berhasil! File presentasi gaya eksekutif siap di-download.")
+                # 4. Simpan ke File Sementara
+                output_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
+                prs.save(output_temp.name)
+
+                st.success("✨ Presentasi PowerPoint eksekutif berhasil digenerate!")
+
+                # 5. Tombol Unduh
+                with open(output_temp.name, "rb") as f:
+                    st.download_button(
+                        label="📥 Download File PPTX Eksekutif",
+                        data=f,
+                        file_name="Executive_Dashboard_Presentation.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    )
+
             except Exception as e:
-                st.error(f"Terjadi kesalahan: {e}")
-
-if st.session_state.output_path and os.path.exists(st.session_state.output_path):
-    with open(st.session_state.output_path, "rb") as f:
-        st.download_button(
-            label="Download File PPTX Eksekutif",
-            data=f,
-            file_name="Presentasi_Executive_Dashboard.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        )
+                st.error(f"Terjadi kesalahan saat memproses data: {e}")
