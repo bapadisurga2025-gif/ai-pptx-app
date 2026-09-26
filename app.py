@@ -173,7 +173,7 @@ if uploaded_file and st.button("🚀 Buat Dashboard PPTX"):
         try:
             # Gunakan structured output config untuk memastikan output berbentuk JSON murni
             res = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.5-flash-lite',
                 contents=[g_file, prompt_json],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json"
