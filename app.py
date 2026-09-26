@@ -2,7 +2,9 @@ import streamlit as st
 import os
 import tempfile
 import json
+import time
 from google import genai
+from google.genai import types
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
@@ -111,45 +113,86 @@ def make_dashboard_pptx(data, output_path="output_dashboard.pptx"):
     prs.save(output_path)
 
 # -----------------------------------------------------------------------------
-# PROSES UTAMA STREAMLIT
+# PROSES UTAMA STREAMLIT DENGAN HANDLING FILE PROCESSING
 # -----------------------------------------------------------------------------
 if uploaded_file and st.button("🚀 Buat Dashboard PPTX"):
-    with st.spinner("🤖 Gemini sedang membaca data PDF..."):
-        client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+    with st.spinner("🤖 Mengunggah dan memproses dokumen PDF..."):
+        api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            st.error("GEMINI_API_KEY belum terpasang di Secrets Streamlit.")
+            st.stop()
+            
+        client = genai.Client(api_key=api_key)
         
         ext = os.path.splitext(uploaded_file.name)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(uploaded_file.getbuffer())
             tmp_path = tmp.name
         
+        # 1. Upload File
         g_file = client.files.upload(file=tmp_path)
 
-        # Gemini diperintahkan hanya mengembalikan data JSON murni
+        # 2. Polling: Tunggu sampai File Siap Digunakan (PROCESSING -> ACTIVE)
+        while g_file.state.name == "PROCESSING":
+            time.sleep(2)
+            g_file = client.files.get(name=g_file.name)
+
+        if g_file.state.name == "FAILED":
+            st.error("Gagal memproses file PDF pada server Gemini API.")
+            st.stop()
+
         prompt_json = """
-        Ekstrak data dari file ini dan kembalikan HANYA JSON murni dengan format persis seperti ini:
+        Ekstrak data keuangan dari dokumen ini dan kembalikan HANYA JSON murni dengan format sebagai berikut:
         {
             "kpis": [
-                {"label": "TOTAL PENDAPATAN", "val": "Rp 3.009.712.487", "growth": "-10.63% YoY"},
-                {"label": "BEBAN OPERASIONAL", "val": "Rp 3.025.557.914", "growth": "-13.43% YoY"},
+                {"label": "TOTAL PENDAPATAN (ATRIBUSI)", "val": "Rp 3.009.712.487", "growth": "-10.63% YoY"},
+                {"label": "BEBAN OPERASIONAL TOTAL", "val": "Rp 3.025.557.914", "growth": "-13.43% YoY"},
                 {"label": "EBITDA", "val": "Rp (128.816.667)", "growth": "-48.67% YoY"}
             ],
             "table_data": [
                 ["Pendapatan Suratpos & Paketpos", "670.161.335", "639.476.109", "-30.685.226", "-4.58%"],
-                ["Pendapatan Jaskug & Ritel", "1.062.885.559", "1.089.368.557", "+26.482.998", "+2.49%"]
+                ["Pendapatan Jaskug & Ritel", "1.062.885.559", "1.089.368.557", "+26.482.998", "+2.49%"],
+                ["Pendapatan Logistik", "758.722.804", "348.292.780", "-410.430.024", "-54.09%"],
+                ["Pendapatan Lainnya", "875.745.445", "932.575.041", "+56.829.596", "+6.49%"],
+                ["Beban Tenaga Kerja", "(1.933.472.858)", "(1.707.309.309)", "+226.163.549", "-11.70%"],
+                ["Beban Operasi", "(1.444.390.205)", "(1.044.810.287)", "+399.579.918", "-27.66%"]
             ],
-            "insights": ["Point 1", "Point 2"],
-            "strategies": ["Action 1", "Action 2"]
+            "insights": [
+                "Pertumbuhan positif dicapai oleh Jaskug & Ritel (+2.49%) dan Pendapatan Lainnya (+6.49%).",
+                "Kontraksi utama pada Logistik (-54.09%) menjadi pemicu utama penurunan total revenue.",
+                "Efisiensi beban berhasil ditekan signifikan: Beban Operasi (-27.66%)."
+            ],
+            "strategies": [
+                "Restrukturisasi Komersial Logistik: Peninjauan ulang SLA dan skema kontrak B2B.",
+                "Akselerasi Channel Ritel & Jaskug: Penambahan kuota agen baru.",
+                "Pengendalian Beban Ketat: Pertahankan tren efisiensi beban operasi."
+            ]
         }
         """
 
-        res = client.models.generate_content(model='gemini-2.5-flash', contents=[g_file, prompt_json])
-        clean_json = res.text.replace("```json", "").replace("```", "").strip()
-        parsed_data = json.loads(clean_json)
+        try:
+            # Gunakan structured output config untuk memastikan output berbentuk JSON murni
+            res = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[g_file, prompt_json],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            
+            parsed_data = json.loads(res.text)
 
-        # Panggil fungsi pembuat slide PPTX
-        output_filename = "Hasil_Executive_Dashboard.pptx"
-        make_dashboard_pptx(parsed_data, output_filename)
+            # Buat PowerPoint
+            output_filename = "Hasil_Executive_Dashboard.pptx"
+            make_dashboard_pptx(parsed_data, output_filename)
 
-        st.success("✨ Slide Executive Dashboard Berhasil Dibuat!")
-        with open(output_filename, "rb") as f:
-            st.download_button("📥 Download File PPTX", f, file_name=output_filename)
+            st.success("✨ Slide Executive Dashboard Berhasil Dibuat!")
+            with open(output_filename, "rb") as f:
+                st.download_button("📥 Download File PPTX", f, file_name=output_filename)
+
+        except Exception as e:
+            st.error(f"Gagal mengolah data: {str(e)}")
+        finally:
+            # Hapus temp file lokal
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
