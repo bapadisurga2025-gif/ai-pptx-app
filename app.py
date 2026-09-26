@@ -22,17 +22,19 @@ if st.button("Generate & Download PPTX"):
                 # Menggunakan API Key dari st.secrets (disimpan aman di cloud Streamlit)
                 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
                 
+                # Menggunakan model gemini-3.8-flash sesuai rekomendasi sistem
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-3.8-flash',
                     contents=f"Buatkan kerangka materi presentasi (Judul Slide dan Poin-poin isi) berdasarkan instruksi: {prompt}"
                 )
                 ai_output = response.text
 
-                # Buat PPTX
+                # Buat PPTX menggunakan python-pptx
                 prs = Presentation()
                 slide = prs.slides.add_slide(prs.slide_layouts[0])
                 slide.shapes.title.text = "Hasil Presentasi AI"
-                slide.placeholders[1].text = ai_output[:200]
+                if slide.placeholders and len(slide.placeholders) > 1:
+                    slide.placeholders[1].text = ai_output[:500]
 
                 output_path = "output_presentation.pptx"
                 prs.save(output_path)
