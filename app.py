@@ -22,9 +22,9 @@ if st.button("Generate & Download PPTX"):
                 # Menggunakan API Key dari st.secrets (disimpan aman di cloud Streamlit)
                 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
                 
-                # Menggunakan model gemini-3.8-flash sesuai rekomendasi sistem
+                # Menggunakan model gemini-3.5-flash yang lebih stabil
                 response = client.models.generate_content(
-                    model='gemini-3.8-flash',
+                    model='gemini-3.5-flash',
                     contents=f"Buatkan kerangka materi presentasi (Judul Slide dan Poin-poin isi) berdasarkan instruksi: {prompt}"
                 )
                 ai_output = response.text
