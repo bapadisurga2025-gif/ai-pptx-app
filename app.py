@@ -4,150 +4,152 @@ import tempfile
 import json
 from google import genai
 from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
+
+st.set_page_config(page_title="Executive PPTX Generator", layout="wide")
+st.title("📊 Executive Dashboard PPTX Generator")
+
+uploaded_file = st.file_uploader("Upload File Laporan Keuangan (PDF/XLSX)", type=["pdf", "xlsx", "csv"])
 
 # -----------------------------------------------------------------------------
-# KONFIGURASI HALAMAN STREAMLIT
+# FUNGSI UNTUK MERANCANG LAYOUT DASHBOARD PPTX
 # -----------------------------------------------------------------------------
-st.set_page_config(
-    page_title="AI PPTX Dashboard Engine",
-    page_icon="📊",
-    layout="wide"
-)
+def make_dashboard_pptx(data, output_path="output_dashboard.pptx"):
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
 
-st.title("📊 AI PPTX Generator - Precision Dashboard Engine")
-st.write("Aplikasi membaca data dan memetakan angka-angkanya secara presisi ke dalam elemen visual template Anda.")
+    # Warna
+    COLOR_NAVY = RGBColor(0, 32, 96)
+    COLOR_ORANGE = RGBColor(255, 29, 0)
+    COLOR_BG_CARD = RGBColor(240, 244, 248)
+    COLOR_BORDER = RGBColor(217, 225, 232)
+    COLOR_WHITE = RGBColor(255, 255, 255)
+    COLOR_TEXT = RGBColor(30, 30, 30)
+
+    # 1. Header Banner
+    header = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.333), Inches(1.1))
+    header.fill.solid()
+    header.fill.fore_color.rgb = COLOR_NAVY
+    header.line.fill.background()
+    tf_h = header.text_frame
+    tf_h.margin_left, tf_h.margin_top = Inches(0.5), Inches(0.2)
+    
+    p = tf_h.paragraphs[0]
+    p.text = "EXECUTIVE FINANCIAL PERFORMANCE DASHBOARD"
+    p.font.size, p.font.bold, p.font.color.rgb = Pt(20), True, COLOR_WHITE
+
+    line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0), Inches(1.1), Inches(13.333), Inches(0.06))
+    line.fill.solid()
+    line.fill.fore_color.rgb = COLOR_ORANGE
+    line.line.fill.background()
+
+    # 2. Top KPI Cards
+    kpis = data.get("kpis", [])
+    for i, kpi in enumerate(kpis[:3]):
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5 + i * 4.2), Inches(1.35), Inches(3.9), Inches(1.1))
+        card.fill.solid()
+        card.fill.fore_color.rgb = COLOR_BG_CARD
+        card.line.color.rgb = COLOR_NAVY
+        tf = card.text_frame
+        tf.margin_left, tf.margin_top = Inches(0.2), Inches(0.15)
+        
+        p1 = tf.paragraphs[0]
+        p1.text, p1.font.size, p1.font.bold, p1.font.color.rgb = kpi.get("label", ""), Pt(9), True, COLOR_NAVY
+        
+        p2 = tf.add_paragraph()
+        p2.text, p2.font.size, p2.font.bold = kpi.get("val", ""), Pt(16), True
+        
+        p3 = tf.add_paragraph()
+        p3.text, p3.font.size = f"Growth: {kpi.get('growth', '')}", Pt(10)
+
+    # 3. Native Table
+    table_rows = data.get("table_data", [])
+    if table_rows:
+        table_shape = slide.shapes.add_table(len(table_rows) + 1, 5, Inches(0.5), Inches(2.6), Inches(12.333), Inches(2.4))
+        table = table_shape.table
+        
+        headers = ["Segmen Pendapatan & Beban", "Realisasi 2025", "Realisasi 2026", "GAP (Nominal)", "Growth (%)"]
+        for c, h in enumerate(headers):
+            cell = table.cell(0, c)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = COLOR_NAVY
+            p = cell.text_frame.paragraphs[0]
+            p.text, p.font.size, p.font.bold, p.font.color.rgb = h, Pt(10), True, COLOR_WHITE
+
+        for r, row in enumerate(table_rows):
+            for c, val in enumerate(row):
+                cell = table.cell(r + 1, c)
+                p = cell.text_frame.paragraphs[0]
+                p.text, p.font.size = str(val), Pt(9.5)
+
+    # 4. Panel Bawah (Insight & Strategy)
+    p_ins = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(5.15), Inches(6.0), Inches(2.05))
+    p_ins.fill.solid()
+    p_ins.fill.fore_color.rgb = COLOR_WHITE
+    tf_ins = p_ins.text_frame
+    p = tf_ins.paragraphs[0]
+    p.text, p.font.bold, p.font.color.rgb = "💡 INSIGHT UTAMA KINERJA", True, COLOR_NAVY
+    for item in data.get("insights", []):
+        p = tf_ins.add_paragraph()
+        p.text, p.font.size = f"• {item}", Pt(9)
+
+    p_str = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(6.833), Inches(5.15), Inches(6.0), Inches(2.05))
+    p_str.fill.solid()
+    p_str.fill.fore_color.rgb = COLOR_WHITE
+    tf_str = p_str.text_frame
+    p = tf_str.paragraphs[0]
+    p.text, p.font.bold, p.font.color.rgb = "🚀 REKOMENDASI STRATEGIS", True, COLOR_ORANGE
+    for item in data.get("strategies", []):
+        p = tf_str.add_paragraph()
+        p.text, p.font.size = f"✓ {item}", Pt(9)
+
+    prs.save(output_path)
 
 # -----------------------------------------------------------------------------
-# INPUT PROMPT & FILE UPLOAD
+# PROSES UTAMA STREAMLIT
 # -----------------------------------------------------------------------------
-prompt_text = st.text_area(
-    "📝 Instruksi Penyusunan Data:",
-    value="Olah data keuangan berikut menjadi laporan kinerja bisnis berformat Executive Dashboard.",
-    height=100
-)
+if uploaded_file and st.button("🚀 Buat Dashboard PPTX"):
+    with st.spinner("🤖 Gemini sedang membaca data PDF..."):
+        client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+        
+        ext = os.path.splitext(uploaded_file.name)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            tmp.write(uploaded_file.getbuffer())
+            tmp_path = tmp.name
+        
+        g_file = client.files.upload(file=tmp_path)
 
-st.markdown("---")
-col1, col2, col3 = st.columns(3)
-with col1:
-    f_eb = st.file_uploader("Upload File EB", type=["csv", "xlsx", "pdf"])
-with col2:
-    f_jaskug = st.file_uploader("Upload File Jaskug", type=["csv", "xlsx", "pdf"])
-with col3:
-    f_ritel = st.file_uploader("Upload File Ritel", type=["csv", "xlsx", "pdf"])
+        # Gemini diperintahkan hanya mengembalikan data JSON murni
+        prompt_json = """
+        Ekstrak data dari file ini dan kembalikan HANYA JSON murni dengan format persis seperti ini:
+        {
+            "kpis": [
+                {"label": "TOTAL PENDAPATAN", "val": "Rp 3.009.712.487", "growth": "-10.63% YoY"},
+                {"label": "BEBAN OPERASIONAL", "val": "Rp 3.025.557.914", "growth": "-13.43% YoY"},
+                {"label": "EBITDA", "val": "Rp (128.816.667)", "growth": "-48.67% YoY"}
+            ],
+            "table_data": [
+                ["Pendapatan Suratpos & Paketpos", "670.161.335", "639.476.109", "-30.685.226", "-4.58%"],
+                ["Pendapatan Jaskug & Ritel", "1.062.885.559", "1.089.368.557", "+26.482.998", "+2.49%"]
+            ],
+            "insights": ["Point 1", "Point 2"],
+            "strategies": ["Action 1", "Action 2"]
+        }
+        """
 
-st.markdown("---")
-uploaded_template = st.file_uploader("🎨 Upload Template PPTX Asli (Wajib .pptx)", type=["pptx"])
+        res = client.models.generate_content(model='gemini-2.5-flash', contents=[g_file, prompt_json])
+        clean_json = res.text.replace("```json", "").replace("```", "").strip()
+        parsed_data = json.loads(clean_json)
 
-# -----------------------------------------------------------------------------
-# EKSEKUSI PENEMPATAN DATA KE TEMPLATE
-# -----------------------------------------------------------------------------
-if st.button("🚀 Process & Map Data into Template"):
-    if not (f_eb or f_jaskug or f_ritel):
-        st.warning("⚠️ Mohon unggah minimal satu file data!")
-    elif not uploaded_template:
-        st.warning("⚠️ Mohon unggah file Template PowerPoint (.pptx) yang ber-layout dashboard!")
-    else:
-        with st.spinner("🤖 Gemini sedang menganalisis data dan menyuntikkannya ke template..."):
-            try:
-                api_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
-                client = genai.Client(api_key=api_key)
+        # Panggil fungsi pembuat slide PPTX
+        output_filename = "Hasil_Executive_Dashboard.pptx"
+        make_dashboard_pptx(parsed_data, output_filename)
 
-                # 1. Upload File Data ke Gemini API
-                all_files = [f for f in [f_eb, f_jaskug, f_ritel] if f is not None]
-                uploaded_gemini_files = []
-                for file_item in all_files:
-                    ext = os.path.splitext(file_item.name)[1]
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                        tmp.write(file_item.getbuffer())
-                        tmp_path = tmp.name
-                    g_file = client.files.upload(file=tmp_path)
-                    uploaded_gemini_files.append(g_file)
-
-                # 2. Minta Gemini Mengembalikan Struktur Teks Terstruktur
-                prompt_instructions = f"""
-Anda adalah Business Analyst. Analisis data keuangan dari file yang diunggah berdasarkan instruksi: "{prompt_text}".
-
-Buatkan isi laporan untuk slide presentasi secara ringkas, padat angka, dan presisi.
-Format output HARUS persis seperti ini (gunakan pemisah ---SLIDE---):
-
----SLIDE---
-JUDUL: [Judul Utama Slide]
-SUBJUDUL: [Subjudul / Periode Data]
-KPI_1: [Label KPI 1] | [Nilai Realisasi] | [Target/Growth]
-KPI_2: [Label KPI 2] | [Nilai Realisasi] | [Target/Growth]
-KPI_3: [Label KPI 3] | [Nilai Realisasi] | [Target/Growth]
-KONTEN:
-[Poin-poin analisis data, ringkasan per channel, atau tabel ringkas]
-"""
-
-                models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash']
-                response = None
-                for m in models_to_try:
-                    try:
-                        response = client.models.generate_content(
-                            model=m,
-                            contents=uploaded_gemini_files + [prompt_instructions]
-                        )
-                        if response and response.text:
-                            break
-                    except:
-                        continue
-
-                if not response or not response.text:
-                    st.error("Server Gemini sedang sibuk. Silakan coba lagi nanti.")
-                    st.stop()
-
-                # 3. Buka File Template PPTX Asli
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_tmpl:
-                    tmp_tmpl.write(uploaded_template.getbuffer())
-                    tmpl_path = tmp_tmpl.name
-
-                prs = Presentation(tmpl_path)
-                slides_content = [s for s in response.text.split("---SLIDE---") if "JUDUL:" in s]
-
-                # 4. In-Place Replacement: Memasukkan teks Gemini langsung ke shape template asli
-                for idx, slide in enumerate(prs.slides):
-                    if idx >= len(slides_content):
-                        break
-
-                    raw_text = slides_content[idx].strip()
-                    lines = raw_text.split("\n")
-
-                    judul = ""
-                    body_text = []
-
-                    for line in lines:
-                        if line.startswith("JUDUL:"):
-                            judul = line.replace("JUDUL:", "").strip()
-                        elif line.startswith("SUBJUDUL:"):
-                            judul += " - " + line.replace("SUBJUDUL:", "").strip()
-                        else:
-                            body_text.append(line)
-
-                    # Ambil semua kotak teks yang ada di slide template
-                    text_shapes = [shape for shape in slide.shapes if shape.has_text_frame]
-
-                    if text_shapes:
-                        # Ganti judul di shape pertama tanpa merusak desain
-                        if judul:
-                            text_shapes[0].text_frame.text = judul
-
-                        # Ganti isi konten di shape-shape berikutnya
-                        if len(text_shapes) > 1 and body_text:
-                            text_shapes[1].text_frame.text = "\n".join(body_text)
-
-                # 5. Simpan File Hasil
-                output_filename = "Hasil_Dashboard_Presisi.pptx"
-                prs.save(output_filename)
-
-                st.success("✨ Berhasil memetakan data Gemini ke dalam template dashboard Anda!")
-                with open(output_filename, "rb") as f:
-                    st.download_button(
-                        label="📥 Download File PPTX (Presisi Template)",
-                        data=f,
-                        file_name="Laporan_Dashboard_Presisi.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    )
-
-            except Exception as e:
-                st.error(f"Terjadi kesalahan: {e}")
+        st.success("✨ Slide Executive Dashboard Berhasil Dibuat!")
+        with open(output_filename, "rb") as f:
+            st.download_button("📥 Download File PPTX", f, file_name=output_filename)
