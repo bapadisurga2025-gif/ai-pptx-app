@@ -1,3 +1,6 @@
-Flask
+streamlit
 google-genai
 python-pptx
+pandas
+openpyxl
+pypdf
