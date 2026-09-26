@@ -53,7 +53,7 @@ uploaded_template = st.file_uploader("Upload Template Contoh / Referensi Visual 
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# PROSES GENERATE VIA GEMINI MULTIMODAL (WITH AUTOMATIC FALLBACK)
+# PROSES GENERATE VIA GEMINI MULTIMODAL
 # -----------------------------------------------------------------------------
 if st.button("🚀 Proses Semua di Gemini AI & Generate PPTX"):
     if not (f_eb or f_jaskug or f_ritel):
@@ -70,7 +70,7 @@ if st.button("🚀 Proses Semua di Gemini AI & Generate PPTX"):
 
                 client = genai.Client(api_key=api_key)
 
-                # 1. Upload File ke Gemini API (File API)
+                # 1. Upload File ke Gemini API
                 uploaded_files_gemini = []
                 all_inputs = [f_eb, p_eb, f_jaskug, p_jaskug, f_ritel, p_ritel, uploaded_template]
                 
@@ -84,16 +84,66 @@ if st.button("🚀 Proses Semua di Gemini AI & Generate PPTX"):
                         g_file = client.files.upload(file=tmp_path)
                         uploaded_files_gemini.append(g_file)
 
-                # 2. Instruksi ke Gemini untuk menghasilkan skrip python-pptx yang presisi
-                prompt_instructions = f"""
-Anda adalah pakar desain presentasi korporat dan pemrograman Python.
-Pengguna memberikan berkas data, foto pendukung, serta berkas contoh template/referensi visual.
+                # 2. String Instruksi tanpa format indentasi ilegal
+                prompt_instructions = (
+                    "Anda adalah pakar desain presentasi korporat dan pemrograman Python.\n"
+                    "Pengguna memberikan berkas data, foto pendukung, serta berkas contoh template/referensi visual.\n\n"
+                    f"Instruksi khusus pengguna:\n\"{prompt_text}\"\n\n"
+                    "Tugas Anda:\n"
+                    "1. Pelajari data keuangan dari berkas yang diunggah.\n"
+                    "2. Analisis gaya desain, warna, dan tata letak dari berkas template referensi yang diunggah.\n"
+                    "3. Hasilkan KODE PYTHON LENGKAP menggunakan library `python-pptx` yang membuat file presentasi bernama `output_presentation.pptx`.\n"
+                    "4. Berikan HANYA kode Python di dalam pembungkus ```python ... ``` tanpa penjelasan teks lainnya.\n"
+                    "Kode harus mendefinisikan pembuatan slide 16:9, menyusun shape, warna, dan text frame yang persis mencerminkan analisis data dan desain dari berkas yang diunggah."
+                )
 
-Instruksi khusus pengguna:
-"{prompt_text}"
+                contents = uploaded_files_gemini + [prompt_instructions]
 
-Tugas Anda:
-1. Pelajari data keuangan dari berkas yang diunggah.
-2. Analisis gaya desain, warna, dan tata letak dari berkas template referensi yang diunggah.
-3. Hasilkan KODE PYTHON LENGKAP menggunakan library `python-pptx` yang membuat file presentasi bernama `output_presentation.pptx`.
-4. Berikan HANYA kode Python di dalam pembungkus ```python ...
+                # 3. Panggil Model dengan Fallback Otomatis
+                models_to_try = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash']
+                response = None
+                
+                for model_name in models_to_try:
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=contents
+                        )
+                        if response and response.text:
+                            break
+                    except Exception as err:
+                        st.warning(f"Server {model_name} sedang sibuk ({err}), mencoba server cadangan...")
+                        continue
+
+                if not response or not response.text:
+                    st.error("Semua server Gemini sedang mengalami lonjakan beban. Mohon coba beberapa saat lagi.")
+                    st.stop()
+
+                generated_code = response.text
+
+                # Bersihkan format markdown dari respon kode
+                if "```python" in generated_code:
+                    generated_code = generated_code.split("```python")[1].split("```")[0]
+                elif "```" in generated_code:
+                    generated_code = generated_code.split("```")[1].split("```")[0]
+
+                # 4. Eksekusi Kode Generator yang Dibuat Oleh Gemini
+                exec_scope = {}
+                exec(generated_code, exec_scope)
+
+                # 5. Unduh File Hasil Olahan Gemini
+                output_filename = "output_presentation.pptx"
+                if os.path.exists(output_filename):
+                    st.success("✨ Gemini AI berhasil menganalisis seluruh data & template serta mengeksekusi pembuatan PPTX!")
+                    with open(output_filename, "rb") as f:
+                        st.download_button(
+                            label="📥 Download File PPTX Olahan Gemini AI",
+                            data=f,
+                            file_name="Hasil_Presentasi_Gemini_AI.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        )
+                else:
+                    st.error("Gagal menemukan file presentasi hasil eksekusi kode Gemini.")
+
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat memproses di Gemini AI: {e}")
